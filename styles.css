@@ -9,7 +9,9 @@
     box-sizing: border-box;
 }
 
+html,
 body {
+    overflow-x: hidden;
     font-family: "Beausite", sans-serif;
 } 
 
@@ -64,8 +66,8 @@ section {
 }
 
 .banner-img-container .img.mask {
-    -webkit-mask-image: url("/banner-img-mask.png");
-    mask-image: url("/banner-img-mask.png");
+    -webkit-mask-image: url("./assets/banner-img-mask.png");
+    mask-image: url("./assets/banner-img-mask.png");
     -webkit-mask-size: cover;
     mask-size: cover;
     -webkit-mask-position: center;
