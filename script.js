@@ -1,56 +1,108 @@
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { SplitText } from "gsap/SplitText";
-import Lenis from "lenis";
-
 document.addEventListener("DOMContentLoaded", () => {
     gsap.registerPlugin(ScrollTrigger, SplitText);
 
-    const lenis = new Lenis();
-    lenis.on("scroll", ScrollTrigger.update);
-    gsap.ticker.add((time) => {
-        lenis.raf(time * 1000);
+    /* ========================
+       LENIS (OPTIMIZED)
+    ======================== */
+    const lenis = new Lenis({
+        lerp: 0.08,
+        smoothWheel: true,
     });
+
+    lenis.on("scroll", ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
     gsap.ticker.lagSmoothing(0);
 
+    /* ========================
+       ELEMENT CACHE
+    ======================== */
     const bannerContainer = document.querySelector(".banner-img-container");
     const bannerIntroTextElements = gsap.utils.toArray(".banner-intro-text");
     const bannerMaskLayers = gsap.utils.toArray(".mask");
-
     const bannerHeader = document.querySelector(".banner-header h1");
+
+    /* ========================
+       SPLIT TEXT (ONCE)
+    ======================== */
     const splitText = new SplitText(bannerHeader, { type: "words" });
     const words = splitText.words;
+
     gsap.set(words, { opacity: 0 });
 
-    bannerMaskLayers.forEach((layer, i) => {
-        gsap.set(layer, { scale: 0.9 - i * 0.15 });
+    /* ========================
+       PRE-COMPUTED VALUES
+    ======================== */
+    const moveDistance = window.innerWidth * 0.5;
+    const layerInitialScales = bannerMaskLayers.map(
+        (_, i) => 0.9 - i * 0.15
+    );
+
+    /* ========================
+       GPU HINTS
+    ======================== */
+    gsap.set(
+        [
+            bannerContainer,
+            bannerIntroTextElements,
+            bannerMaskLayers,
+            words,
+        ],
+        {
+            willChange: "transform, opacity",
+            force3D: true,
+        }
+    );
+
+    /* ========================
+       WORD TIMELINE (KEY OPTIMIZATION)
+    ======================== */
+    const wordsTl = gsap.timeline({ paused: true });
+    wordsTl.to(words, {
+        opacity: 1,
+        stagger: 0.04,
+        ease: "none",
     });
+
+    /* ========================
+       INITIAL STATES
+    ======================== */
     gsap.set(bannerContainer, { scale: 0 });
 
+    bannerMaskLayers.forEach((layer, i) => {
+        gsap.set(layer, { scale: layerInitialScales[i] });
+    });
+
+    /* ========================
+       SCROLLTRIGGER
+    ======================== */
     ScrollTrigger.create({
-        trigger: "banner",
+        trigger: ".banner",
         start: "top top",
         end: `+=${window.innerHeight * 4}px`,
         pin: true,
         pinSpacing: true,
         scrub: 1,
+
         onUpdate: (self) => {
             const progress = self.progress;
 
+            /* IMAGE SCALE */
             gsap.set(bannerContainer, { scale: progress });
 
+            /* MASK LAYERS SCALE */
+            const layerProgress = Math.min(progress / 0.9, 1);
+
             bannerMaskLayers.forEach((layer, i) => {
-                const initialScale = 0.9 - i * 0.15;
-                const layerProgress = Math.min(progress / 0.9, 1.0);
-                const currentScale = 
-                    initialScale + layerProgress * (1.0 - initialScale);
-                
-                gsap.set(layer, { scale: currentScale });
+                gsap.set(layer, {
+                    scale:
+                        layerInitialScales[i] +
+                        layerProgress * (1 - layerInitialScales[i]),
+                });
             });
 
+            /* INTRO TEXT MOVE */
             if (progress <= 0.9) {
-                const textProgress = progress /0.9;
-                const moveDistance = window.innerWidth * 0.5;
+                const textProgress = progress / 0.9;
 
                 gsap.set(bannerIntroTextElements[0], {
                     x: -textProgress * moveDistance,
@@ -60,32 +112,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
 
-            if (progress >= 0.7 && progress <= 0.9) {
-                const headerProgress = (progress - 0.7) / 0.2;
-                const totalWords = words.length;
-                
-                words.forEach((word, i) => {
-                    const wordStartDelay = i / totalWords;
-                    const wordEndDelay = (i + 1) / totalWords;
+            /* INTRO TEXT VISIBILITY */
+            const textFade = gsap.utils.clamp(
+                0,
+                1,
+                (progress - 0.85) / 0.05
+            );
 
-                    let wordOpacity = 0;
+            gsap.set(bannerIntroTextElements, {
+                opacity: 1 - textFade,
+            });
 
-                    if (headerProgress >= wordEndDelay) {
-                        wordOpacity = 1;
-                    } else if (headerProgress >= wordStartDelay) {
-                        const wordProgress = 
-                        (headerProgress - wordStartDelay) / 
-                        (wordEndDelay - wordStartDelay);
-                        wordOpacity = wordProgress;
-                    }
-
-                    gsap.set(word, { opacity: wordOpacity });
-                });
-            } else if (progress < 0.7) {
-                gsap.set(words, { opacity: 0 });
-            } else if (progress > 0.9) {
-                gsap.set(words, {opacity: 1});
-            }
+            /* HEADER WORDS (TIMELINE DRIVEN) */
+            const headerProgress = gsap.utils.clamp(
+                0,
+                1,
+                (progress - 0.7) / 0.2
+            );
+            wordsTl.progress(headerProgress);
         },
     });
 });
